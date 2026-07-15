@@ -39,8 +39,14 @@ func (h *UploadHandler) Upload(c *gin.Context) {
 
 	taskID := uuid.New().String()
 
-	// 缓存文件到 Redis（生产环境用 Minio）
+	// 缓存文件到 Redis（生产环境用 Minio SDK）
+	// ⚠️ Redis 不适合存大文件 (>10MB)，生产环境务必使用 Minio
 	ctx := context.Background()
+	maxSize := int64(50 * 1024 * 1024) // 50MB
+	if header.Size > maxSize {
+		c.JSON(413, gin.H{"code": 413, "message": "文件过大，最大支持50MB"})
+		return
+	}
 	h.rdb.Set(ctx, "file:"+taskID, data, 1*time.Hour)
 
 	task := &model.Task{
