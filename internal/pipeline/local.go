@@ -47,12 +47,7 @@ func (s *LocalStore) ListAll() []map[string]interface{} {
 	s.mu.RLock(); defer s.mu.RUnlock()
 	list := make([]map[string]interface{}, 0, len(s.docs))
 	for _, d := range s.docs {
-		item := map[string]interface{}{"filename": d["filename"], "category": d["category"], "indexed_at": d["indexed_at"]}
-		if t, ok := d["text"].(string); ok && len(t) > 100 {
-			item["preview"] = t[:100] + "..."
-		} else {
-			item["preview"] = d["text"]
-		}
+		item := map[string]interface{}{"filename": d["filename"], "category": d["category"], "indexed_at": d["indexed_at"], "text": d["text"]}
 		list = append(list, item)
 	}
 	return list
