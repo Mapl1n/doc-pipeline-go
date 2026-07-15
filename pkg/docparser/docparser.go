@@ -14,7 +14,11 @@ import (
 // Parse 从文件数据中自动识别格式并提取文本
 // 支持: PDF, DOCX, TXT, HTML
 func Parse(data []byte, filename string) (string, error) {
-	ext := strings.ToLower(filename[strings.LastIndex(filename, ".")+1:])
+	// Extract extension safely (handle files with no extension)
+	ext := ""
+	if idx := strings.LastIndex(filename, "."); idx >= 0 && idx < len(filename)-1 {
+		ext = strings.ToLower(filename[idx+1:])
+	}
 
 	switch ext {
 	case "pdf":
