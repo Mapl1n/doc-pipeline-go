@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"doc-pipeline-go/internal/model"
+	"doc-pipeline-go/pkg/docparser"
 )
 
 // LocalQueue — 纯 Go channel 任务队列，替代 Redis Stream
@@ -113,16 +114,12 @@ func (s *LocalStore) DocCount() int {
 	return len(s.docs)
 }
 
-// LocalParser — 本地文本解析，替代 Tika
+// LocalParser — 本地文档解析（纯 Go PDF/DOCX/TXT）
 type LocalParser struct{}
 
 func NewLocalParser() *LocalParser { return &LocalParser{} }
-func (p *LocalParser) Parse(data []byte) (string, error) {
-	text := string(data)
-	if len(text) == 0 {
-		return "", fmt.Errorf("empty file")
-	}
-	return text, nil
+func (p *LocalParser) Parse(data []byte, filename string) (string, error) {
+	return docparser.Parse(data, filename)
 }
 
 // StandalonePipeline — 自包含流水线
@@ -164,7 +161,7 @@ func (p *StandalonePipeline) process(task *model.Task, data []byte) {
 
 	// Parse
 	p.emitProgress(task, model.StageParse, 0.3)
-	text, err := p.parser.Parse(data)
+	text, err := p.parser.Parse(data, task.Filename)
 	if err != nil {
 		task.Status = model.StatusFailed
 		task.Error = err.Error()
