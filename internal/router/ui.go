@@ -4,17 +4,17 @@ import "github.com/gin-gonic/gin"
 
 func serveWebUI(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(200, uiHTML)
+	c.String(200, pipeUI)
 }
 
-const uiHTML = `<!DOCTYPE html>
+const pipeUI = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>🔄 文档处理流水线</title>
+<title>文档处理流水线</title>
 <style>
 :root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--accent:#f59e0b;--green:#22c55e;--red:#ef4444;--purple:#8b5cf6}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text)}
+body{font-family:-apple-system,BlinkMacSystemFont,'Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text)}
 .header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
 .header h1{font-size:18px}.container{max-width:800px;margin:20px auto;padding:0 20px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
@@ -47,8 +47,8 @@ input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(-
 <div class="container">
   <div class="card"><h3>📤 提交文档</h3>
     <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-      <p style="font-size:28px">📄</p><p>上传 PDF/DOCX 开始处理</p>
-      <p style="font-size:11px;color:var(--muted);margin-top:4px">Upload → Parse → Classify → Index</p>
+      <p style="font-size:28px">📄</p><p>上传 PDF/DOCX/TXT 开始处理</p>
+      <p style="font-size:11px;color:var(--muted);margin-top:4px">上传 → 解析 → 分类 → 索引</p>
     </div>
     <input type="file" id="fileInput" accept=".pdf,.docx,.txt" style="display:none" onchange="uploadFile()">
     <div id="status" style="font-size:12px;color:var(--muted)"></div>
@@ -56,39 +56,40 @@ input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(-
   <div id="monitor" class="card"><h3>📊 处理监控</h3><p style="color:var(--muted);font-size:13px">提交文件以查看处理进度</p></div>
 </div>
 <script>
-var bp=window.location.pathname.replace(/\/+$/,'');const API=(bp===''||bp==='/')?'/api':bp+'/api';let ws=null;
-document.getElementById('dropZone').ondragover=e=>{e.preventDefault()};
-document.getElementById('dropZone').ondrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)doUpload(f)};
-function uploadFile(){const f=document.getElementById('fileInput').files[0];if(f)doUpload(f)}
+var bp=window.location.pathname.replace(/\/+$/,'');const API=(bp===''||bp==='/')?'/api':bp+'/api';var ws=null;
+document.getElementById('dropZone').ondragover=function(e){e.preventDefault()};
+document.getElementById('dropZone').ondrop=function(e){e.preventDefault();var f=e.dataTransfer.files[0];if(f)doUpload(f)};
+function uploadFile(){var f=document.getElementById('fileInput').files[0];if(f)doUpload(f)}
 async function doUpload(file){
-  document.getElementById('status').innerHTML='<span style="color:var(--accent)">⏳ 上传中...</span>';
-  const fd=new FormData();fd.append('file',file);
+  document.getElementById('status').innerHTML='<span style="color:var(--accent)">上传中...</span>';
+  var fd=new FormData();fd.append('file',file);
   try{
-    const r=await fetch(API+'/upload',{method:'POST',body:fd});const d=await r.json();
+    var r=await fetch(API+'/upload',{method:'POST',body:fd});var d=await r.json();
     if(d.code===0){
-      toast('✅ 任务已提交: '+d.data.task_id.substring(0,8)+'...','success');
+      toast('任务已提交: '+d.data.task_id.substring(0,8)+'...','success');
       startMonitoring(d.data.task_id,file.name);
     }else{toast(d.message,'error')}
   }catch(e){toast(e.message,'error')}
   document.getElementById('status').innerHTML='';
 }
+var stageLabels={upload:'上传',parse:'解析',classify:'分类',index:'索引',complete:'完成'};
 function startMonitoring(taskID,filename){
   if(ws)ws.close();
-  const stages=['upload','parse','classify','index','complete'];
-  document.getElementById('monitor').innerHTML='<h3>📊 处理中: '+filename+'</h3><div class="pipeline">'+
-    stages.map((s,i)=>'<div class="stage">'+(i>0?'<div class="arrow">→</div>':'')+'<div class="step" id="step-'+s+'">'+({upload:'📤 上传',parse:'🔍 解析',classify:'🏷️ 分类',index:'📇 索引',complete:'✅ 完成'})[s]+'</div></div>').join('')+
-    '</div><div class="progress-bar"><div class="progress-fill" id="pbar" style="width:0%"></div></div><p id="stageInfo" style="font-size:12px;color:var(--muted);text-align:center">等待 Worker...</p><div id="taskResult"></div>';
-  const proto=location.protocol==='https:'?'wss':'ws';
+  var stages=['upload','parse','classify','index','complete'];
+  document.getElementById('monitor').innerHTML='<h3>处理: '+filename+'</h3><div class="pipeline">'+
+    stages.map(function(s,i){return'<div class="stage">'+(i>0?'<div class="arrow">-></div>':'')+'<div class="step" id="step-'+s+'">'+stageLabels[s]+'</div></div>'}).join('')+
+    '</div><div class="progress-bar"><div class="progress-fill" id="pbar" style="width:0%"></div></div><p id="stageInfo" style="font-size:12px;color:var(--muted);text-align:center">等待处理...</p><div id="taskResult"></div>';
+  var proto=location.protocol==='https:'?'wss':'ws';
   ws=new WebSocket(proto+'://'+location.host+API+'/ws/progress?task_id='+taskID);
   ws.onmessage=function(e){
-    const event=JSON.parse(e.data);
+    var event=JSON.parse(e.data);
     document.getElementById('pbar').style.width=(event.progress*100)+'%';
-    document.getElementById('stageInfo').textContent=event.stage+' · '+(event.progress*100).toFixed(0)+'%';
-    document.querySelectorAll('.step').forEach(s=>s.classList.remove('active','done','failed'));
-    stages.forEach(s=>{
-      const el=document.getElementById('step-'+s);
+    document.getElementById('stageInfo').textContent=stageLabels[event.stage]+' - '+(event.progress*100).toFixed(0)+'%';
+    document.querySelectorAll('.step').forEach(function(s){s.classList.remove('active','done','failed')});
+    stages.forEach(function(s){
+      var el=document.getElementById('step-'+s);
       if(!el)return;
-      const si=stages.indexOf(s),ci=stages.indexOf(event.stage);
+      var si=stages.indexOf(s),ci=stages.indexOf(event.stage);
       if(si<ci)el.classList.add('done');
       else if(si===ci){
         if(event.status==='failed')el.classList.add('failed');
@@ -97,14 +98,14 @@ function startMonitoring(taskID,filename){
     });
     if(event.status==='done'){
       document.getElementById('step-complete').classList.add('done');
-      document.getElementById('stageInfo').textContent='✅ 处理完成!';
-      toast('任务完成','success');
+      document.getElementById('stageInfo').textContent='处理完成!';
+      toast('任务处理完成','success');
     }
     if(event.status==='failed'){
-      document.getElementById('taskResult').innerHTML='<p style="color:var(--red);margin-top:12px">❌ '+event.error+'</p>';
+      document.getElementById('taskResult').innerHTML='<p style="color:var(--red);margin-top:12px">'+event.error+'</p>';
       toast('处理失败: '+event.error,'error');
     }
   };
 }
-function toast(msg,type){const e=document.getElementById('toast'),d=document.createElement('div');d.className='toast-msg toast-'+type;d.textContent=msg;e.appendChild(d);setTimeout(()=>d.remove(),3000)}
+function toast(msg,type){var e=document.getElementById('toast'),d=document.createElement('div');d.className='toast-msg toast-'+type;d.textContent=msg;e.appendChild(d);setTimeout(function(){d.remove()},3000)}
 </script></body></html>`
