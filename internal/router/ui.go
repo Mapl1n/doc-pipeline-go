@@ -56,7 +56,7 @@ input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(-
   <div id="monitor" class="card"><h3>📊 处理监控</h3><p style="color:var(--muted);font-size:13px">提交文件以查看处理进度</p></div>
 </div>
 <script>
-const API='/api';let ws=null;
+var bp=window.location.pathname.replace(/\/+$/,'');const API=(bp===''||bp==='/')?'/api':bp+'/api';let ws=null;
 document.getElementById('dropZone').ondragover=e=>{e.preventDefault()};
 document.getElementById('dropZone').ondrop=e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)doUpload(f)};
 function uploadFile(){const f=document.getElementById('fileInput').files[0];if(f)doUpload(f)}
