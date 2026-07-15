@@ -1,0 +1,4 @@
+*.exe
+server
+.env
+!.env.example

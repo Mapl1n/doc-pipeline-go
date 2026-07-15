@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: pipeline-redis
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: pipeline-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms256m -Xmx256m"
+    ports: ["9200:9200"]
+    healthcheck:
+      test: ["CMD","curl","-s","http://localhost:9200/_cluster/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  tika:
+    image: apache/tika:latest
+    container_name: pipeline-tika
+    ports: ["9998:9998"]
+
+  app:
+    build: .
+    container_name: pipeline-app
+    depends_on:
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    ports: ["8082:8082"]
+    environment:
+      - SERVER_PORT=8082
+      - REDIS_ADDR=redis:6379
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+      - TIKA_URL=http://tika:9998
+      - WORKER_COUNT=4
+      - STREAM_NAME=doc:pipeline
+    restart: unless-stopped
