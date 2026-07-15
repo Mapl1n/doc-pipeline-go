@@ -43,6 +43,20 @@ func (s *LocalStore) Index(id, filename, category, text string) {
 	s.mu.Lock(); defer s.mu.Unlock()
 	s.docs[id] = map[string]interface{}{"task_id": id, "filename": filename, "category": category, "text": text, "indexed_at": time.Now().Format(time.RFC3339)}
 }
+func (s *LocalStore) ListAll() []map[string]interface{} {
+	s.mu.RLock(); defer s.mu.RUnlock()
+	list := make([]map[string]interface{}, 0, len(s.docs))
+	for _, d := range s.docs {
+		item := map[string]interface{}{"filename": d["filename"], "category": d["category"], "indexed_at": d["indexed_at"]}
+		if t, ok := d["text"].(string); ok && len(t) > 100 {
+			item["preview"] = t[:100] + "..."
+		} else {
+			item["preview"] = d["text"]
+		}
+		list = append(list, item)
+	}
+	return list
+}
 
 type LocalParser struct{}
 

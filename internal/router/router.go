@@ -70,6 +70,10 @@ func Setup(cfg *config.Config) (*gin.Engine, *pipeline.StandalonePipeline) {
 		api.GET("/queue/pending", func(c *gin.Context) {
 			c.JSON(200, gin.H{"pending": sp.PendingCount()})
 		})
+		api.GET("/documents", func(c *gin.Context) {
+			docs := sp.LocalStore().ListAll()
+			c.JSON(200, gin.H{"code": 0, "data": docs})
+		})
 	}
 
 	return r, sp
