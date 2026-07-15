@@ -1,71 +1,76 @@
 package router
 
 import (
-	"context"
+	"io"
+	"log"
+
 	"doc-pipeline-go/internal/config"
 	"doc-pipeline-go/internal/handler"
 	"doc-pipeline-go/internal/pipeline"
-	"doc-pipeline-go/internal/worker"
-	"log"
 
-	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
-func Setup(cfg *config.Config) (*gin.Engine, *worker.Pool, *worker.Dispatcher) {
-	// Redis
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr, DB: cfg.RedisDB})
-	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Fatalf("Redis unreachable: %v", err)
-	}
+type StandaloneHandlers struct {
+	Upload   gin.HandlerFunc
+	Task     gin.HandlerFunc
+	WS       gin.HandlerFunc
+	Metrics  gin.HandlerFunc
+}
 
-	// ES
-	es, err := elasticsearch.NewClient(elasticsearch.Config{Addresses: []string{cfg.ESUrl()}})
-	if err != nil {
-		log.Fatalf("ES: %v", err)
-	}
+func Setup(cfg *config.Config) (*gin.Engine, *pipeline.StandalonePipeline) {
+	// Use standalone pipeline (zero external dependencies)
+	sp := pipeline.NewStandalonePipeline()
+	log.Println("[PIPELINE] running in standalone mode (in-memory queue + local store)")
 
-	// Pipeline
-	pl := pipeline.New(rdb,
-		pipeline.NewParserStage(cfg.TikaURL),
-		pipeline.NewClassifyStage(),
-		pipeline.NewIndexStage(es, "documents"),
-	)
-
-	// Worker Pool
-	dispatcher := worker.NewDispatcher(rdb, cfg.StreamName, cfg.ConsumerGroup)
-	pool := worker.NewPool(cfg.WorkerCount, pl)
-	go pool.Start(context.Background(), dispatcher)
-
-	// Handlers
-	uploadH := handler.NewUploadHandler(dispatcher, rdb)
-	progressH := handler.NewProgressHandler(pl)
-	metricsH := handler.NewMetricsHandler(pool, dispatcher)
+	progressH := handler.NewProgressHandler(sp)
 
 	r := gin.Default()
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+		c.Header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type")
 		if c.Request.Method == "OPTIONS" { c.AbortWithStatus(204); return }
 		c.Next()
 	})
 
 	r.GET("/", serveWebUI)
-	r.GET("/api/health", func(c *gin.Context) { c.JSON(200, gin.H{"status":"ok"}) })
+	r.GET("/api/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok", "mode": "standalone"}) })
 
 	api := r.Group("/api")
 	{
-		api.POST("/upload", uploadH.Upload)
-		api.GET("/tasks/:task_id", progressH.GetTask)
+		api.POST("/upload", func(c *gin.Context) {
+			file, header, err := c.Request.FormFile("file")
+			if err != nil {
+				c.JSON(400, gin.H{"code": 400, "message": "请选择文件"})
+				return
+			}
+			defer file.Close()
+			data, _ := io.ReadAll(file)
+			task := sp.Submit(header.Filename, data, header.Header.Get("Content-Type"))
+			c.JSON(201, gin.H{"code": 0, "message": "文档已提交", "data": gin.H{
+				"task_id": task.ID, "filename": task.Filename, "status": "pending",
+			}})
+		})
+
+		api.GET("/tasks/:task_id", func(c *gin.Context) {
+			task := sp.GetTask(c.Param("task_id"))
+			if task == nil {
+				c.JSON(404, gin.H{"message": "not found"})
+				return
+			}
+			c.JSON(200, gin.H{"code": 0, "data": task})
+		})
+
 		api.GET("/ws/progress", progressH.StreamProgress)
-		api.GET("/metrics", metricsH.Prometheus)
+
+		api.GET("/metrics", func(c *gin.Context) {
+			c.String(200, "# HELP doc_pipeline_tasks_pending Pending tasks\n# TYPE doc_pipeline_tasks_pending gauge\ndoc_pipeline_tasks_pending %d\n", sp.PendingCount())
+		})
 		api.GET("/queue/pending", func(c *gin.Context) {
-			n, _ := dispatcher.PendingTasks(c.Request.Context())
-			c.JSON(200, gin.H{"pending": n})
+			c.JSON(200, gin.H{"pending": sp.PendingCount()})
 		})
 	}
 
-	return r, pool, dispatcher
+	return r, sp
 }
